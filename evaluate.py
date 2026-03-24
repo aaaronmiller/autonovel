@@ -17,28 +17,16 @@ import argparse
 import json
 import os
 import sys
-import glob
 import re
 from datetime import datetime
 from pathlib import Path
-
-# --- Configuration ---
-BASE_DIR = Path(__file__).parent
-
-# Load .env file if present
-from dotenv import load_dotenv
-load_dotenv(BASE_DIR / ".env")
-
-# Judge uses Opus 4.6 (harsh, critical). Writer uses Sonnet 4.6 (fast, long context).
-# Intentionally different to avoid self-congratulation.
-JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-opus-4-6")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE_URL = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, CHAPTERS_DIR, EVAL_LOGS_DIR, JUDGE_MODEL
+API_BASE_URL = get_api_base_url()
 
 # Beta header to unlock 1M context window on both Opus 4.6 and Sonnet 4.6
 ANTHROPIC_BETA = "context-1m-2025-08-07"
-CHAPTERS_DIR = BASE_DIR / "chapters"
-EVAL_LOG_DIR = BASE_DIR / "eval_logs"
+EVAL_LOG_DIR = EVAL_LOGS_DIR
 EVAL_LOG_DIR.mkdir(exist_ok=True)
 
 
@@ -266,9 +254,11 @@ def load_chapter(n):
 def load_all_chapters():
     """Load all chapter files in order."""
     chapters = {}
-    for f in sorted(glob.glob(str(CHAPTERS_DIR / "ch_*.md"))):
-        num = int(re.search(r'ch_(\d+)', f).group(1))
-        chapters[num] = Path(f).read_text()
+    for path in sorted(CHAPTERS_DIR.glob("ch_*.md")):
+        match = re.search(r"ch_(\d+)", path.name)
+        if not match:
+            continue
+        chapters[int(match.group(1))] = path.read_text()
     return chapters
 
 
@@ -276,15 +266,10 @@ def call_judge(prompt, max_tokens=2000):
     """Call the Anthropic judge LLM and return its response text."""
     import httpx
 
-    headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": ANTHROPIC_BETA,
-        "content-type": "application/json",
-    }
+    headers = build_api_headers(beta=ANTHROPIC_BETA)
     payload = {
         "model": JUDGE_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.3,
         "system": "You are a literary critic and novel editor. "
                   "You evaluate fiction with precision. Always respond with valid JSON. "
@@ -395,9 +380,9 @@ CROSS-CHECKS (perform these before scoring):
    - Deduct from character_distinctiveness if multiple characters
      share the same sentence structures
 2. Check for missing NEGATIVE SPACE -- what's absent?
-   - Are there gaps in the magic system that would block a specific
-     plot scene? (e.g., can Cass hear lies in written documents?
-     What happens during the climax -- what rule resolves it?)
+   - Are there gaps in the governing system that would block a specific
+     plot scene? (e.g., a key ability works one way in one scene and
+     another way in a later one? What resolves the climax?)
    - Are there characters needed for the plot who don't exist?
    - Are there scenes the outline demands that the world can't support?
 3. Check for CONVENIENT GAPS vs DELIBERATE MYSTERY:
@@ -610,8 +595,8 @@ Score these dimensions:
 
 - character_voice: Remove all dialogue tags mentally. Can you tell who's
   speaking? Do characters ever sound alike? Does dialogue read as speech
-  or as written prose? Does Cass sound like a specific 14-year-old, or
-  like "young protagonist"? Does anyone say something surprising -- not
+  or as written prose? Does the protagonist sound like a specific person,
+  not a role? Does anyone say something surprising -- not
   just the right thing, but a REAL thing? Characters who never stumble,
   hesitate, or say something slightly wrong are AI-pattern characters.
 
@@ -621,7 +606,7 @@ Score these dimensions:
 
 - prose_quality: Sentence variety (measure: do 3+ consecutive sentences
   start the same way?). Specificity (concrete nouns > abstract).
-  Metaphors from Cass's experience, not from a thesaurus. Show-don't-tell
+  Metaphors from the viewpoint character's experience, not from a thesaurus. Show-don't-tell
   at emotional peaks. QUOTE the weakest sentence and explain why. Also
   check for: repeated phrases, leaned-on constructions, paragraphs that
   could be cut without loss.

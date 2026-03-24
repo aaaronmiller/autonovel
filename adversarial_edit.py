@@ -10,29 +10,19 @@ import os
 import sys
 import json
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import CHAPTERS_DIR, EDIT_LOGS_DIR, JUDGE_MODEL, chapter_files
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-opus-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-CHAPTERS_DIR = BASE_DIR / "chapters"
-EDIT_LOG_DIR = BASE_DIR / "edit_logs"
+API_BASE = get_api_base_url()
+EDIT_LOG_DIR = EDIT_LOGS_DIR
 EDIT_LOG_DIR.mkdir(exist_ok=True)
 
 def call_judge(prompt, max_tokens=8000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": JUDGE_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.3,
         "system": (
             "You are a ruthless literary editor. You cut fat from prose. "
@@ -152,7 +142,10 @@ def main():
         sys.exit(1)
     
     if sys.argv[1] == "all":
-        chapters = list(range(1, 25))
+        chapters = [
+            int(path.stem.split("_")[1])
+            for path in chapter_files()
+        ]
     else:
         chapters = [int(sys.argv[1])]
     

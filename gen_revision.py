@@ -3,29 +3,18 @@
 Revision chapter generator. Rewrites a chapter from a specific revision brief.
 Usage: python gen_revision.py <chapter_num> <brief_file>
 """
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "context-1m-2025-08-07",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers(beta="context-1m-2025-08-07")
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.8,
         "system": (
             "You are rewriting a fantasy novel chapter based on a specific revision brief. "
@@ -58,7 +47,7 @@ def main():
     old_path = BASE_DIR / "chapters" / f"ch_{ch_num:02d}.md"
     old_text = old_path.read_text() if old_path.exists() else "(no existing draft)"
     
-    prompt = f"""Rewrite Chapter {ch_num} of "The Second Son of the House of Bells."
+    prompt = f"""Rewrite Chapter {ch_num} of "{project_title()}".
 
 REVISION BRIEF (follow this exactly):
 {brief}

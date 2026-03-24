@@ -8,11 +8,9 @@ Outputs: voice_fingerprint.json with per-chapter metrics.
 import re
 import json
 import statistics
-from pathlib import Path
 from collections import Counter
+from project_config import BASE_DIR, CHAPTERS_DIR, EDIT_LOGS_DIR, chapter_files
 
-BASE_DIR = Path(__file__).parent
-CHAPTERS_DIR = BASE_DIR / "chapters"
 
 # The three vocabulary wells from voice.md
 WELL_MUSICAL = {
@@ -142,10 +140,12 @@ def analyze_chapter(path):
 
 def main():
     results = {}
-    for ch in range(1, 25):
-        path = CHAPTERS_DIR / f"ch_{ch:02d}.md"
-        if path.exists():
-            results[f"ch_{ch:02d}"] = analyze_chapter(path)
+    chapter_paths = chapter_files()
+    for path in chapter_paths:
+        ch = int(path.stem.split("_")[1])
+        results[f"ch_{ch:02d}"] = analyze_chapter(path)
+    if not results:
+        raise SystemExit("No chapter files found in chapters/")
     
     # Compute novel-wide averages
     all_vals = list(results.values())
@@ -177,9 +177,12 @@ def main():
     print("VOICE FINGERPRINT")
     print("=" * 70)
     print(f"{'Ch':<8} {'Words':<7} {'AvgSnt':<7} {'CV':<6} {'Frag%':<7} {'Long%':<7} {'Dial%':<7} {'Mus%':<6} {'Trd%':<6} {'Bod%':<6} {'AbsPK':<6} {'HeStrt':<7}")
-    for ch in range(1, 25):
+    for path in chapter_paths:
+        ch = int(path.stem.split("_")[1])
         key = f"ch_{ch:02d}"
-        r = results[key]
+        r = results.get(key)
+        if not r:
+            continue
         print(f"  {ch:<6} {r['word_count']:<7} {r['avg_sentence_length']:<7} {r['sentence_length_cv']:<6} {r['fragments_pct']:<7} {r['long_sentences_pct']:<7} {r['dialogue_ratio']:<7} {r['well_musical_pct']:<6} {r['well_trade_pct']:<6} {r['well_body_pct']:<6} {r['abstract_per_1k']:<6} {r['he_start_pct']:<7}")
     
     r = results["novel_average"]
@@ -192,7 +195,8 @@ def main():
             print(f"    {o}")
     
     # Save full results
-    out_path = BASE_DIR / "edit_logs" / "voice_fingerprint.json"
+    EDIT_LOGS_DIR.mkdir(exist_ok=True)
+    out_path = EDIT_LOGS_DIR / "voice_fingerprint.json"
     with open(out_path, "w") as f:
         json.dump({"chapters": results, "outliers": outliers}, f, indent=2)
     print(f"\nSaved to {out_path}")

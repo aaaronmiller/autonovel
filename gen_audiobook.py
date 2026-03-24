@@ -16,15 +16,8 @@ import io
 import re
 import time
 import argparse
-from pathlib import Path
-from dotenv import load_dotenv
+from project_config import AUDIO_DIR, BASE_DIR, ELEVENLABS_KEY
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env", override=True)
-
-ELEVENLABS_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
-
-AUDIO_DIR = BASE_DIR / "audiobook"
 SCRIPTS_DIR = AUDIO_DIR / "scripts"
 OUTPUT_DIR = AUDIO_DIR / "chapters"
 VOICES_FILE = BASE_DIR / "audiobook_voices.json"

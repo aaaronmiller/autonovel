@@ -3,28 +3,18 @@
 One-shot world.md generator for foundation phase.
 Reads seed.txt + voice.md, calls the writer model, outputs world.md content.
 """
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.7,
         "system": (
             "You are a fantasy worldbuilder with deep knowledge of Sanderson's Laws, "
@@ -49,7 +39,7 @@ voice_lines = voice.split('\n')
 part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
 voice_part2 = '\n'.join(voice_lines[part2_start:])
 
-prompt = f"""Build a complete world bible for this fantasy novel. This is the WORLD.MD file -- 
+prompt = f"""Build a complete world bible for this novel. This is the WORLD.MD file --
 the definitive reference for everything that EXISTS in this world. A writer should be able 
 to resolve any worldbuilding question from this document alone.
 
@@ -76,36 +66,38 @@ A timeline of major events. Focus on events that create PRESENT-DAY tensions.
 Include the founding myth, key turning points, and recent events that matter to the plot.
 
 ## Magic System
-### Hard Rules (Tonal Law)
-Specific, testable rules. What intervals do what. What progressions bind.
-What happens when you break the rules. Include COSTS and LIMITATIONS prominently.
+### Hard Rules
+Specific, testable rules for the governing system of the story.
+If the novel is speculative, define what the system does, what it costs,
+and what happens when characters break the rules.
 
-### Soft Magic (Cass's Gift)
-What he perceives, how it works, what it costs HIM specifically.
-This should be mysterious but have consistent internal logic.
+### Soft Rules / Edge Cases
+What remains mysterious, intuitive, folkloric, or exceptional?
+If the novel has no speculative system, use this section for social rules,
+taboos, institutional constraints, or the story's most important ambiguities.
 
 ### Societal Implications
-How does tonal law shape: governance, commerce, education, class structure,
-crime, family life, childhood, aging, disability?
+How do the governing rules of this world shape governance, commerce,
+education, class structure, crime, family life, and daily routine?
 
 ## Geography
-Cantamura's physical layout, districts, the natural amphitheater's acoustic properties.
-Neighboring places (at least 2-3). Sensory signatures for each location.
+Physical layout, neighboring places (at least 2-3), and sensory signatures
+for each major location.
 
 ## Factions & Politics
 Who holds power, who wants it, who's being crushed by it.
 At least 3-4 factions with opposing interests.
 
 ## Bestiary / Flora / Natural World
-What's unique about the natural world in and around Cantamura?
+What's unique about the natural world in and around the story's setting?
 
 ## Cultural Details
 Customs, taboos, festivals, food, clothing, coming-of-age rituals.
 Things that make daily life feel SPECIFIC.
 
 ## Internal Consistency Rules
-Hard constraints a writer must not violate. The physics of sound in this world.
-What's possible and what's not.
+Hard constraints a writer must not violate. What is possible, impossible,
+or socially forbidden in this setting?
 
 IMPORTANT:
 - Be SPECIFIC. Not "the city has districts" but name them, describe them, 

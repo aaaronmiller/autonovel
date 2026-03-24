@@ -1,28 +1,17 @@
 #!/usr/bin/env python3
 """Generate outline.md from seed + world + characters + mystery + craft."""
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "context-1m-2025-08-07",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers(beta="context-1m-2025-08-07")
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.5,
         "system": (
             "You are a novel architect with deep knowledge of Save the Cat beats, "
@@ -49,8 +38,9 @@ voice_lines = voice.split('\n')
 part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
 voice_part2 = '\n'.join(voice_lines[part2_start:])
 
-prompt = f"""Build a complete chapter outline for this fantasy novel. Target: 22-26 chapters,
-~80,000 words total (~3,000-4,000 words per chapter).
+prompt = f"""Build a complete chapter outline for this novel. Target an appropriate
+chapter count and total length for the seed, world, and voice rather than forcing a
+single template.
 
 SEED CONCEPT:
 {seed}
@@ -72,26 +62,27 @@ CRAFT REFERENCE (structures to follow):
 
 BUILD THE OUTLINE WITH:
 
-## Act Structure
-Map out Act I (0-23%), Act II Part 1 (23-50%), Act II Part 2 (50-77%), Act III (77-100%).
-State the percentage marks for the key novel.
+## Act Structure or Structural Model
+If this novel is operating on a beat-sheet structure, map out the acts and percentage marks.
+If it is literary or non-beat-sheet, name the structural model explicitly and explain how
+progression works.
 
 ## Chapter-by-Chapter Outline
 
 For EACH chapter, provide:
 ### Ch N: [Title]
-- **POV:** (always Cass, third-person limited)
+- **POV:** (the actual POV character for that chapter)
 - **Location:** Which districts/locations
-- **Save the Cat beat:** Which beat this chapter serves (Opening Image, Setup, Catalyst, etc.)
+- **Structural function:** Which beat / structural role this chapter serves
 - **% mark:** Where this falls in the novel
 - **Emotional arc:** Starting emotion → ending emotion
 - **Try-fail cycle:** Yes-but / No-and / No-but / Yes-and
 - **Beats:** 3-5 specific scene beats that must happen
 - **Plants:** Foreshadowing elements planted in this chapter
 - **Payoffs:** Foreshadowing elements that pay off here
-- **Character movement:** What changes for Cass (or other characters) by chapter's end
-- **The lie:** How Cass's lie ("if I master the system, I can fix things from inside") is
-  reinforced or challenged in this chapter
+- **Character movement:** What changes for the POV character or key cast by chapter's end
+- **Central misconception / pressure:** How the protagonist's current false belief,
+  coping strategy, or emotional blind spot is reinforced or challenged
 - **~Word count target:** for pacing
 
 ## Foreshadowing Ledger
@@ -101,29 +92,11 @@ A table tracking every planted thread:
 
 Include at LEAST 15 threads. Types: object, dialogue, action, symbolic, structural.
 
-KEY PLOT ARCHITECTURE:
-
-Act I (Ch 1-6ish): Establish Cass's world, his pain, his gift, the Academy, his family.
-Plant the mystery early (the locked room, the forbidden bells, father's tremor).
-Catalyst: something forces Cass to investigate Perin's contract.
-
-Act II Part 1 (Ch 7-12ish): Investigation. Cass digs into the Corda contract, encounters
-Maret, allies with Torvald and Lenne, begins hearing the harmonic more clearly.
-Midpoint: Cass learns a partial truth that changes his approach (false victory or defeat).
-
-Act II Part 2 (Ch 13-18ish): Pressure mounts. Maret moves against the Bellwrights.
-Father's secrets begin to surface. Cass's lie is increasingly unsustainable.
-All Is Lost: Cass confronts his father and learns the full truth.
-
-Act III (Ch 19-24ish): Cass understands the question. Must choose how to answer.
-The climax plays out using the established intervals of Tonal Law.
-The resolution shows the aftermath of his choice.
-
 CONSTRAINTS:
-- The climax must be mechanically resolvable using established Tonal Law intervals
-- Cass's investigation should feel like a mystery plot overlaid on a coming-of-age arc
+- The climax must be mechanically or psychologically resolvable using what the story
+  has already established
+- The shape of the plot should emerge from the seed, not from stock fantasy defaults
 - The Stability Trap: bad things must stay bad. Not everything resolves cleanly.
-- Perin must appear in person at some point (not just in memory/letters)
 - At least 3 chapters should be "quiet" -- character-focused, low-action, emotionally rich
 - Vary the try-fail types: 60%+ should be "yes-but" or "no-and"
 - The foreshadowing ledger must have plant-to-payoff distances of at least 3 chapters

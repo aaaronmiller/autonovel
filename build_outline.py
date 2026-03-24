@@ -4,31 +4,20 @@ Rebuild outline.md from the actual chapters.
 Reads each chapter, calls the LLM for a structured summary,
 and assembles into an outline that reflects the novel as-written.
 """
-import os
 import sys
 import json
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, CHAPTERS_DIR, JUDGE_MODEL, chapter_files, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-CHAPTERS_DIR = BASE_DIR / "chapters"
+API_BASE = get_api_base_url()
 
 def call_model(prompt, max_tokens=1500):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": JUDGE_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.1,
         "system": (
             "You produce structured outline entries for novel chapters. "
@@ -48,13 +37,9 @@ def call_model(prompt, max_tokens=1500):
     return json.loads(text)
 
 def main():
-    # Load supporting docs for context
-    characters = (BASE_DIR / "characters.md").read_text()[:3000]
-    
     entries = []
-    
-    for ch in range(1, 20):
-        path = CHAPTERS_DIR / f"ch_{ch:02d}.md"
+
+    for ch, path in enumerate(chapter_files(), start=1):
         text = path.read_text()
         wc = len(text.split())
         
@@ -86,15 +71,12 @@ JSON only, no other text."""
         entries.append(data)
         print(f"  {ch:2d}. {title_line} ({wc}w)")
     
-    # Load existing outline header info
-    old_outline = (BASE_DIR / "outline.md").read_text()
-    
     # Build new outline
     lines = []
-    lines.append("# THE SECOND SON OF THE HOUSE OF BELLS")
+    lines.append(f"# {project_title()}")
     lines.append("## Chapter Outline (reflects actual novel as-written)")
     lines.append("")
-    lines.append(f"**23 chapters, {sum(e['words'] for e in entries):,} words**")
+    lines.append(f"**{len(entries)} chapters, {sum(e['words'] for e in entries):,} words**")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -158,7 +140,7 @@ JSON only, no other text."""
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("*Outline rebuilt from actual chapters, Cycle 5.*")
+    lines.append("*Outline rebuilt from actual chapters.*")
     
     out = '\n'.join(lines)
     (BASE_DIR / "outline.md").write_text(out)

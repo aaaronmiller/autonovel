@@ -4,6 +4,7 @@ import subprocess
 import sys
 import re
 import json
+from project_config import BASE_DIR, ENABLE_GIT
 
 def run(cmd, timeout=600):
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
@@ -71,9 +72,6 @@ for ch in chapters:
     
     results.append((ch, words, slop['slop_penalty'], score))
     
-    # Git commit
-    run(f"cd /home/jeffq/autonovel && git add chapters/ch_{ch:02d}.md state.json")
-    
     # Update state.json
     with open("state.json") as f:
         state = json.load(f)
@@ -81,6 +79,9 @@ for ch in chapters:
     state["chapters_drafted"] = ch
     with open("state.json", "w") as f:
         json.dump(state, f, indent=2)
+
+    if ENABLE_GIT:
+        run(f"cd {BASE_DIR} && git add chapters/ch_{ch:02d}.md state.json")
 
 print(f"\n\n{'='*60}")
 print("BATCH DRAFTING COMPLETE")

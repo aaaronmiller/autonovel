@@ -1,6 +1,6 @@
 # autonovel
 
-Autonomous fantasy novel writing pipeline. The agent writes and refines
+Autonomous novel writing pipeline. The agent writes and refines
 a novel across 5 co-evolving layers, guided by automated evaluation.
 
 ## Required Reading
@@ -37,9 +37,9 @@ LOOP until foundation_score > 7.5 AND lore_score > 7.0:
   3. Expand or revise that layer's document
   4. When adding facts to world.md or characters.md, ALSO log them
      in canon.md as canonical entries
-  5. git commit with description of what changed
+  5. If git automation is enabled, commit with a description of what changed
   6. Re-evaluate
-  7. If score improved -> keep. If worse -> git reset --hard HEAD~1, discard.
+  7. If score improved -> keep. If worse -> restore the previous files and discard.
   8. Log to results.tsv
 
 Lore priorities (the foundation evaluator weights these at 40%):
@@ -78,13 +78,27 @@ FOR each chapter in outline order:
     6. After evaluation, check new_canon_entries in the eval output.
        Add any new facts established in the chapter to canon.md.
     7. Log to results.tsv
-    8. git commit
+    8. If git automation is enabled, commit
 
 Canon grows during drafting. Every chapter establishes facts (a
 character reveals something, a place is described, an event occurs).
 These get logged in canon.md so future chapters stay consistent.
 
 After all chapters drafted, update state.json phase to "revision".
+
+## Phase 2.5: Organic Finishing
+
+After revision stabilizes, run an organic finishing pass. Add details
+that resist the story's neatness:
+
+  - unexplained sensory details
+  - sideways memories
+  - physical comedy or absurdity
+  - behavior the text does not over-interpret
+  - recurring details that never fully explain themselves
+
+Distribute these unevenly. If a detail starts to feel too thematic,
+replace it.
 
 ## Phase 3: Revision (infinite refinement)
 
@@ -105,7 +119,7 @@ LOOP FOREVER:
      e. Adjust pacing (split/merge chapters)
      f. Update planning docs to reflect reality
   4. Make the change(s)
-  5. git commit
+  5. If git automation is enabled, commit
   6. Re-evaluate affected scope
   7. Keep/discard
   8. Log to results.tsv
@@ -151,20 +165,42 @@ Chapter: voice_adherence, beat_coverage, character_voice,
 Full novel: all above + arc_completion, pacing_curve,
   theme_coherence, foreshadowing_resolution, overall_engagement
 
+## Prose Critique
+
+After Phase 2 and after every major revision cycle, generate a prose
+critique alongside numeric scores:
+
+  - Emotional temperature: is the register monotone?
+  - Character opacity: which supporting characters are people vs functions?
+  - Passivity audit: does the protagonist make an unforced decision?
+  - Surprise audit: does the story contain a consequence the framework
+    does not fully absorb?
+  - Register variation: does the prose have more than one mode?
+  - Dramatization audit: are the most consequential beats scenes or summaries?
+
+For literary/contemporary fiction, also apply the guidance in CRAFT.md
+section 9.
+
+## Continuity Protocol
+
+After structural revisions, verify:
+
+  - ages, dates, and duration arithmetic
+  - recurring object details
+  - room and layout references
+  - titles, names, institutions, and relationships
+  - any fact repeated across chapters or planning docs
+
 ## The Stability Trap (CRITICAL)
 
-AI's worst tendency is FAVOURING STABILITY OVER CHANGE. This kills
+AI's worst tendency is favouring stability over change. This kills
 fiction. Actively fight it at every phase:
 
 - Characters must end TRULY different from how they began.
 - Let bad things stay bad. Not everything gets fixed.
-- Allow irreversible decisions and irreversible loss.
-- Withhold information from the reader. Maintain mystery.
-- Create genuine moral ambiguity. The "right" choice should be unclear.
-- Vary emotional intensity: quiet/explosive/dread/relief/wonder/horror.
-- If a choice has no real cost, it's not a real choice.
-- Conflicts should NOT resolve too quickly or too cleanly.
-- Resist the urge to round off sharp edges into something safer.
+- At least one register break per 10,000 words.
+- At least one unforced protagonist decision.
+- At least one scene that breaks the story's own rules.
 
 ## Foundation Phase: Voice Discovery
 
@@ -190,12 +226,15 @@ Every POV character must have documented before drafting begins:
 
 ## Foundation Phase: Plot Framework
 
-The outline must demonstrate:
+For genre fiction, the outline must demonstrate:
 - Save the Cat beats at roughly correct percentage marks
 - Try-fail cycle types planned for each chapter (yes-but / no-and)
 - Foreshadowing ledger with every plant and its planned payoff
 - MICE threads identified and planned to close in reverse order
 - Escalating stakes through Act 2
+
+For literary or non-beat-sheet fiction, explicitly name the structural
+model instead of pretending there is none.
 
 ## Rules
 

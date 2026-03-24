@@ -2,28 +2,18 @@
 """
 Generate canon.md by extracting all hard facts from world.md + characters.md.
 """
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.2,  # Low temp for factual extraction
         "system": (
             "You are a continuity editor extracting hard facts from fantasy novel "
@@ -65,8 +55,8 @@ FORMAT THE OUTPUT AS CANON.MD with these categories:
 - Dated events, ages, durations
 
 ## Magic System Rules
-- Hard rules of Tonal Law (intervals, costs, limitations)
-- Cass's gift specifics
+- Hard rules of any speculative system, social system, or governing constraints
+- Character-specific edge cases that materially affect scenes
 
 ## Character Facts
 - Ages, physical descriptions, habits, relationships
@@ -80,7 +70,7 @@ FORMAT THE OUTPUT AS CANON.MD with these categories:
 
 ## Established In-Story
 - Events that have already happened in the story's past
-- The Perin contract, the Expansion Wars, etc.
+- The backstory events the novel treats as fixed facts
 
 RULES:
 - One fact per bullet point. Short. Specific. Checkable.

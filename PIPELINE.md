@@ -3,9 +3,7 @@
 ## Overview
 
 This document captures the full automated pipeline for generating,
-drafting, and revising a novel from a seed concept. Derived from the
-production of "The Second Son of the House of Bells" (75k words, 23
-chapters, 5 revision cycles).
+drafting, and revising a novel from a seed concept.
 
 The goal: a user provides a seed concept. Everything else is automated.
 
@@ -109,7 +107,7 @@ INPUT:  seed.txt (user-provided or generated via seed.py)
 OUTPUT: branch created, .env configured
 
 1. git checkout -b autonovel/<tag>
-2. Verify .env has ANTHROPIC_API_KEY
+2. Verify `.env` has API credentials and project metadata
 3. Verify seed.txt exists and is specific enough
    (world-differentiator, central tension, cost/constraint, sensory hook)
 ```
@@ -131,7 +129,7 @@ Loop:
   6. Define MYSTERY.md (the central secret the reader discovers)
   7. gen_canon.py        → canon.md (cross-reference all hard facts)
   8. evaluate.py --phase=foundation
-  9. If score improved → git commit. If worse → git reset --hard HEAD~1.
+  9. If score improved → keep. If worse → restore the previous files.
   10. Identify weakest dimension → target next iteration at it.
 
 Key learnings:
@@ -162,7 +160,7 @@ For each chapter in outline order:
      - Next chapter's outline (for continuity)
   2. draft_chapter.py → chapters/ch_NN.md
   3. evaluate.py --chapter=NN
-  4. If score > 6.0 → keep, commit. If < 6.0 → discard, retry (max 5).
+  4. If score > 6.0 → keep. If < 6.0 → discard, retry (max 5).
   5. Extract new canon entries from eval output → append to canon.md
   6. Log to results.tsv
 

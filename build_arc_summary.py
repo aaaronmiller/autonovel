@@ -4,29 +4,18 @@ Build a condensed arc summary for full-novel evaluation.
 For each chapter: first 150 words, last 150 words, plus any dialogue.
 Gives the reader panel enough to evaluate the ARC without 72k tokens.
 """
-import os
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, CHAPTERS_DIR, WRITER_MODEL, chapter_files, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-CHAPTERS_DIR = BASE_DIR / "chapters"
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=4000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.1,
         "system": "You summarize novel chapters precisely. State what HAPPENS, what CHANGES, and what QUESTIONS are left open. No evaluation. No praise. Just events and shifts.",
         "messages": [{"role": "user", "content": prompt}],
@@ -51,9 +40,9 @@ def extract_key_passages(text):
 
 def main():
     summaries = []
-    
-    for ch in range(1, 20):
-        path = CHAPTERS_DIR / f"ch_{ch:02d}.md"
+
+    files = chapter_files()
+    for ch, path in enumerate(files, start=1):
         text = path.read_text()
         wc = len(text.split())
         opening, closing, dialogue = extract_key_passages(text)
@@ -79,25 +68,14 @@ def main():
         summaries.append(entry)
         print(f"Ch {ch}: summarized ({wc}w)")
     
-    # Calculate total word count
-    total_wc = sum(len((CHAPTERS_DIR / f"ch_{c:02d}.md").read_text().split()) for c in range(1, 20))
+    total_wc = sum(len(path.read_text().split()) for path in files)
     
     # Assemble
-    full = f"""# THE SECOND SON OF THE HOUSE OF BELLS
+    full = f"""# {project_title()}
 ## Full-Arc Summary for Reader Panel
 
 This document contains chapter summaries, opening/closing passages,
-and key dialogue for all 23 chapters. Total novel: {total_wc:,} words.
-
-PREMISE: In Cantamura, a city where law is sung into binding through
-specific musical intervals, 14-year-old Cass Bellwright can hear when
-someone is lying -- a quarter-tone between F and F-sharp that causes
-him physical pain. His older brother Perin has been bound to service
-in the House of Corda for 10 years through a contract their father
-allowed. The bells their family maintains contain a secret: a question
-("Do you consent to be bound?") embedded in the sub-harmonics by the
-city's founder 200 years ago. No one has ever heard it. No one has
-ever answered. Every binding in Cantamura is technically void.
+and key dialogue for all {len(files)} chapters. Total novel: {total_wc:,} words.
 
 ---
 

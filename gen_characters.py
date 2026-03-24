@@ -3,28 +3,18 @@
 One-shot characters.md generator for foundation phase.
 Reads seed.txt + voice.md + world.md + CRAFT.md, calls writer model.
 """
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.7,
         "system": (
             "You are a character designer for literary fiction with deep knowledge of "
@@ -48,7 +38,7 @@ voice_lines = voice.split('\n')
 part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
 voice_part2 = '\n'.join(voice_lines[part2_start:])
 
-prompt = f"""Build a complete character registry for this fantasy novel. This is CHARACTERS.MD --
+prompt = f"""Build a complete character registry for this novel. This is CHARACTERS.MD --
 the definitive reference for WHO exists in this story, what drives them, how they speak,
 and what secrets they carry.
 
@@ -83,9 +73,9 @@ Rules: Want and Need must be IN TENSION. Lie statable in one sentence.
 7. Metaphor domain  8. Directness vs indirectness
 Test: Remove dialogue tags. Can you tell who's speaking?
 
-BUILD THE REGISTRY WITH AT LEAST THESE CHARACTERS:
+BUILD THE REGISTRY WITH:
 
-1. **Cass Bellwright** (protagonist, POV character)
+1. **The protagonist / primary POV**
    - Full wound/want/need/lie chain
    - Three sliders with justification
    - Arc type (positive/negative/flat)
@@ -94,32 +84,20 @@ BUILD THE REGISTRY WITH AT LEAST THESE CHARACTERS:
    - At least 2 secrets
    - Key relationships mapped
 
-2. **Eddan Bellwright** (father)
-   - Same depth as Cass
-   - His relationship to the sealed journals, the shaking hands
-   - What he knows and what he's hiding
+2. **A close personal counterforce**
+   - Family member, partner, friend, rival, or mentor whose logic conflicts
+     with the protagonist's even when they care about them
 
-3. **Perin Bellwright** (brother) 
-   - Even though he's absent for much of the story, he needs full depth
-   - What actually happened with the Corda contract
-   - His presence through absence
+3. **A primary external antagonist or institutional obstacle**
+   - Not a cartoon villain
+   - Their own wound/want/need/lie (they should be understandable)
 
-4. **Maret Corda** (antagonist)
-   - Not a villain -- someone whose interests conflicts with Cass's
-   - Her own wound/want/need/lie (she should be understandable)
+4. **At least two consequential supporting characters**
+   - One ally or accomplice with an agenda of their own
+   - One supporting character who can surprise the story
 
-5. **Rector Suvaine** (Academy Chancellor)
-   - The institutional antagonist -- the system personified
-   - She believes she's protecting Cantamura
-
-6. **Torvald Hess** (Compact leader)
-   - The outsider perspective on the system
-   - What he represents thematically
-
-7. **At least 1-2 additional characters** that the story needs
-   - A peer/friend for Cass at the Academy?
-   - Someone at the House of Corda who knows Perin?
-   - A Court Singer with divided loyalties?
+5. **Any additional characters the premise clearly requires**
+   - Protecting the social, political, or professional ecosystem of the book
 
 FOR EACH CHARACTER INCLUDE:
 - Name, age, role
@@ -137,9 +115,10 @@ IMPORTANT:
 - Characters must INTERCONNECT. Their wants should conflict with each other.
 - Every secret should be something that would CHANGE the story if revealed.
 - Speech patterns must be distinct enough to pass the no-tags test.
-- Give Cass habits that come from his gift (the pain, the constant listening).
-- The father's shaking hands should connect to something specific.
-- Maret Corda should be as fully realized as Cass -- a worthy antagonist.
+- The protagonist's habits should emerge from their pressures, not from generic
+  "main character" behavior.
+- Any recurring physical tell should connect to something specific and causal.
+- The antagonist or counterforce should be as fully realized as the protagonist.
 - Target ~3000-4000 words. Dense character work, not padding.
 """
 

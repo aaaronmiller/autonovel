@@ -23,18 +23,14 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from project_config import BASE_DIR, BRIEFS_DIR, CHAPTERS_DIR, EDIT_LOGS_DIR, ENABLE_GIT, EVAL_LOGS_DIR
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).parent
 STATE_FILE = BASE_DIR / "state.json"
 RESULTS_FILE = BASE_DIR / "results.tsv"
-CHAPTERS_DIR = BASE_DIR / "chapters"
-BRIEFS_DIR = BASE_DIR / "briefs"
-EDIT_LOGS_DIR = BASE_DIR / "edit_logs"
-EVAL_LOGS_DIR = BASE_DIR / "eval_logs"
 
 FOUNDATION_THRESHOLD = 7.5
 CHAPTER_THRESHOLD = 6.0
@@ -146,12 +142,29 @@ def uv_run(script: str, timeout: int = 600) -> subprocess.CompletedProcess:
     return run_tool(f"uv run python {script}", timeout=timeout)
 
 
+def snapshot_files(paths: list[Path]) -> dict[Path, bytes | None]:
+    return {path: path.read_bytes() if path.exists() else None for path in paths}
+
+
+def restore_snapshot(snapshot: dict[Path, bytes | None]):
+    for path, data in snapshot.items():
+        if data is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+
 # ---------------------------------------------------------------------------
 # Helpers: git operations
 # ---------------------------------------------------------------------------
 
 def git_add_commit(message: str) -> str:
     """Stage all changes and commit. Returns short hash or empty string."""
+    if not ENABLE_GIT:
+        step(f"GIT DISABLED: {message}")
+        return ""
     run_tool("git add -A")
     result = run_tool(f'git commit -m "{message}" --allow-empty')
     if result.returncode == 0:
@@ -166,6 +179,9 @@ def git_add_commit(message: str) -> str:
 
 def git_reset_hard(ref: str = "HEAD~1"):
     """Hard reset to discard bad changes."""
+    if not ENABLE_GIT:
+        step(f"GIT DISABLED: reset skipped for {ref}")
+        return
     step(f"GIT RESET: {ref}")
     run_tool(f"git reset --hard {ref}")
 
@@ -248,6 +264,14 @@ def run_foundation(state: dict) -> dict:
     for i in range(iteration + 1, MAX_FOUNDATION_ITERS + 1):
         banner(f"Foundation Iteration {i}", "-")
         state["iteration"] = i
+        foundation_snapshot = snapshot_files([
+            BASE_DIR / "world.md",
+            BASE_DIR / "characters.md",
+            BASE_DIR / "outline.md",
+            BASE_DIR / "canon.md",
+            BASE_DIR / "voice.md",
+            BASE_DIR / "MYSTERY.md",
+        ])
 
         # 1. Generate planning documents
         step("Generating world bible...")
@@ -288,7 +312,7 @@ def run_foundation(state: dict) -> dict:
             save_state(state)
         else:
             step(f"Score did not improve ({score} <= {best_score}), discarding")
-            git_reset_hard("HEAD")
+            restore_snapshot(foundation_snapshot)
             log_result("discarded", "foundation", score, 0, "discard",
                        f"Iteration {i}: no improvement ({score} <= {best_score})")
 
@@ -332,16 +356,19 @@ def run_drafting(state: dict) -> dict:
 
         for attempt in range(1, MAX_CHAPTER_ATTEMPTS + 1):
             step(f"Attempt {attempt}/{MAX_CHAPTER_ATTEMPTS}")
+            ch_file = CHAPTERS_DIR / f"ch_{ch:02d}.md"
+            chapter_snapshot = snapshot_files([ch_file])
 
             # Draft
             draft_result = uv_run(f"draft_chapter.py {ch}", timeout=600)
             if draft_result.returncode != 0:
+                restore_snapshot(chapter_snapshot)
                 step(f"Draft failed (exit {draft_result.returncode}), retrying...")
                 continue
 
             # Check the chapter file exists and has content
-            ch_file = CHAPTERS_DIR / f"ch_{ch:02d}.md"
             if not ch_file.exists() or ch_file.stat().st_size < 100:
+                restore_snapshot(chapter_snapshot)
                 step("Chapter file missing or too short, retrying...")
                 continue
 
@@ -366,9 +393,7 @@ def run_drafting(state: dict) -> dict:
                 step(f"Score {score} < {CHAPTER_THRESHOLD}, discarding attempt")
                 log_result("discarded", f"ch{ch:02d}", score, word_count,
                            "discard", f"Chapter {ch} attempt {attempt}")
-                # Remove the bad chapter file so next attempt starts fresh
-                if ch_file.exists():
-                    run_tool(f"git checkout -- chapters/ch_{ch:02d}.md 2>/dev/null || true")
+                restore_snapshot(chapter_snapshot)
 
         if not drafted:
             step(f"WARNING: Chapter {ch} failed all {MAX_CHAPTER_ATTEMPTS} attempts, "
@@ -549,6 +574,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
 
             # Run revision
             step(f"Revising Ch {ch_num} with brief {brief_file.name}...")
+            revision_snapshot = snapshot_files([CHAPTERS_DIR / f"ch_{ch_num:02d}.md"])
             uv_run(f"gen_revision.py {ch_num} {brief_file}", timeout=600)
 
             # Evaluate revised chapter
@@ -569,7 +595,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
                            f"Cycle {cycle}: {question} improved {pre_score}->{post_score}")
             else:
                 step(f"Revision made it worse ({post_score} < {pre_score}), reverting")
-                git_reset_hard("HEAD")
+                restore_snapshot(revision_snapshot)
                 log_result("reverted", f"rev-ch{ch_num:02d}", post_score,
                            word_count, "discard",
                            f"Cycle {cycle}: {question} regressed {pre_score}->{post_score}")

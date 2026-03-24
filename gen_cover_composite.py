@@ -13,6 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from project_config import PROJECT_AUTHOR, PROJECT_SUBTITLE, project_title
 
 BASE_DIR = Path(__file__).parent
 
@@ -57,12 +58,15 @@ def draw_text_with_shadow(draw, position, text, font, fill, shadow_color, shadow
 
 def composite_cover(
     art_path,
-    title="The Second Son of the House of Bells",
-    author="Claude Hermes",
-    subtitle="A Novel",
+    title=None,
+    author=None,
+    subtitle=None,
     preset="auto",
     output_path=None,
 ):
+    title = title or project_title()
+    author = author or PROJECT_AUTHOR
+    subtitle = subtitle if subtitle is not None else PROJECT_SUBTITLE
     img = Image.open(art_path).convert("RGBA")
     w, h = img.size
 
@@ -178,9 +182,9 @@ def composite_cover(
 def main():
     parser = argparse.ArgumentParser(description="Composite text over cover art")
     parser.add_argument("art_path", help="Path to the cover art image")
-    parser.add_argument("--title", default="The Second Son of the House of Bells")
-    parser.add_argument("--author", default="Claude Hermes")
-    parser.add_argument("--subtitle", default="A Novel")
+    parser.add_argument("--title", default=None)
+    parser.add_argument("--author", default=None)
+    parser.add_argument("--subtitle", default=None)
     parser.add_argument("--preset", choices=["auto", "dark", "light"], default="auto")
     parser.add_argument("--output", default=None)
 

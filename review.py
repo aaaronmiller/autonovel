@@ -18,18 +18,17 @@ import re
 import argparse
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from api_config import (
+    apply_max_output_limit,
+    build_api_headers,
+    get_api_base_url,
+    has_api_credentials,
+)
+from project_config import BASE_DIR, CHAPTERS_DIR, EDIT_LOGS_DIR, REVIEW_MODEL, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env", override=True)
+API_BASE = get_api_base_url()
 
-# Use Opus for reviews — it's the best at literary analysis
-REVIEW_MODEL = os.environ.get("AUTONOVEL_REVIEW_MODEL", "claude-opus-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-
-CHAPTERS_DIR = BASE_DIR / "chapters"
-LOGS_DIR = BASE_DIR / "edit_logs"
+LOGS_DIR = EDIT_LOGS_DIR
 
 REVIEW_PROMPT = """Read the below novel, "{title}". Review it first as a literary critic (like a newspaper book review) and then as a professor of fiction. In the later review, give specific, actionable suggestions for any defects you find. Be fair but honest. You don't *have* to find defects.
 
@@ -39,15 +38,10 @@ REVIEW_PROMPT = """Read the below novel, "{title}". Review it first as a literar
 def call_opus(prompt, max_tokens=8000):
     """Call Opus with the full manuscript."""
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "context-1m-2025-08-07",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers(beta="context-1m-2025-08-07")
     payload = {
         "model": REVIEW_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.3,
         "messages": [{"role": "user", "content": prompt}],
     }
@@ -62,17 +56,7 @@ def call_opus(prompt, max_tokens=8000):
 
 def get_title():
     """Extract novel title from first chapter or outline."""
-    outline = BASE_DIR / "outline.md"
-    if outline.exists():
-        first_line = outline.read_text().split("\n")[0]
-        title = first_line.lstrip("# ").strip()
-        if title:
-            return title
-    ch1 = CHAPTERS_DIR / "ch_01.md"
-    if ch1.exists():
-        first_line = ch1.read_text().split("\n")[0]
-        return first_line.lstrip("# ").strip()
-    return "Untitled Novel"
+    return project_title()
 
 
 def build_manuscript():
@@ -279,8 +263,8 @@ def main():
     
     args = parser.parse_args()
     
-    if not API_KEY:
-        print("ERROR: ANTHROPIC_API_KEY not set in .env", file=sys.stderr)
+    if not has_api_credentials():
+        print("ERROR: ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN not set in .env", file=sys.stderr)
         sys.exit(1)
     
     if args.parse:

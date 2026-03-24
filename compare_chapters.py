@@ -12,28 +12,18 @@ import sys
 import json
 import re
 import random
-from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, CHAPTERS_DIR, EDIT_LOGS_DIR, JUDGE_MODEL, chapter_files
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-opus-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-CHAPTERS_DIR = BASE_DIR / "chapters"
+API_BASE = get_api_base_url()
 
 def call_judge(prompt, max_tokens=4000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": JUDGE_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.2,
         "system": (
             "You are a literary editor comparing two chapters of the same novel. "
@@ -192,7 +182,7 @@ def main():
         print(json.dumps(result, indent=2))
     else:
         # Full tournament
-        chapters = list(range(1, 25))
+        chapters = [int(path.stem.split("_")[1]) for path in chapter_files()]
         ranking, elo, matchups = run_tournament(chapters)
         
         print(f"\n{'='*50}")
@@ -208,7 +198,8 @@ def main():
             "matchups": matchups,
             "timestamp": datetime.now().isoformat()
         }
-        out_path = BASE_DIR / "edit_logs" / "tournament_results.json"
+        EDIT_LOGS_DIR.mkdir(exist_ok=True)
+        out_path = EDIT_LOGS_DIR / "tournament_results.json"
         with open(out_path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\nSaved to {out_path}")

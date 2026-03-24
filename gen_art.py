@@ -29,13 +29,9 @@ import time
 import shutil
 import argparse
 import subprocess
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, FAL_KEY, WRITER_MODEL, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env", override=True)
-
-FAL_KEY = os.environ.get("FAL_KEY", "")
 FAL_URL = "https://fal.run/fal-ai/nano-banana-2"
 FAL_EDIT_URL = "https://fal.run/fal-ai/nano-banana-2/edit"
 
@@ -45,9 +41,7 @@ SVG_DIR = ART_DIR / "svg"
 STYLE_FILE = ART_DIR / "visual_style.json"
 PICKS_FILE = ART_DIR / "picks.json"
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+ANTHROPIC_BASE = get_api_base_url()
 
 
 # ============================================================
@@ -116,14 +110,10 @@ def call_claude(prompt, max_tokens=1500):
     import httpx
     resp = httpx.post(
         f"{ANTHROPIC_BASE}/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
+        headers=build_api_headers(),
         json={
             "model": WRITER_MODEL,
-            "max_tokens": max_tokens,
+            "max_tokens": apply_max_output_limit(max_tokens),
             "temperature": 0.3,
             "messages": [{"role": "user", "content": prompt}],
         },
@@ -165,10 +155,7 @@ def get_reference_url(art_type):
 def cmd_style(args):
     world = (BASE_DIR / "world.md").read_text()[:5000]
     voice = (BASE_DIR / "voice.md").read_text()[:3000]
-    title = "Unknown"
-    outline = BASE_DIR / "outline.md"
-    if outline.exists():
-        title = outline.read_text().split("\n")[0].lstrip("# ").strip()
+    title = project_title()
 
     prompt = f"""You are an art director designing the visual identity for a fantasy novel.
 

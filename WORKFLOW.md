@@ -19,6 +19,11 @@ uv run python seed.py
 # 3. Create a branch for your novel
 git checkout -b autonovel/my-novel
 
+# 3a. Set metadata and runtime switches in .env
+# AUTONOVEL_TITLE=...
+# AUTONOVEL_AUTHOR=...
+# AUTONOVEL_ENABLE_GIT=0
+
 # 4. Run the full pipeline
 uv run python run_pipeline.py --from-scratch
 ```

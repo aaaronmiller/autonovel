@@ -12,40 +12,14 @@ Usage:
   python gen_audiobook_script.py 1         # Single chapter
   python gen_audiobook_script.py 1 5       # Range of chapters
 """
-import os
 import sys
 import json
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import AUDIO_DIR, BASE_DIR, CHAPTERS_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env", override=True)
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
-
-CHAPTERS_DIR = BASE_DIR / "chapters"
-AUDIO_DIR = BASE_DIR / "audiobook"
+API_BASE = get_api_base_url()
 SCRIPTS_DIR = AUDIO_DIR / "scripts"
-
-# Characters from the novel
-CHARACTERS = {
-    "NARRATOR": "The narrative voice — warm, measured, precise. Reads prose with the rhythm of the novel's world.",
-    "CASS": "14-year-old boy. Dry, sharp, sometimes frustrated. His voice tightens when he lies or holds back.",
-    "EDDAN": "52, Cass's father. Deep, rough, terse. Sentences often trail off or restart. Workshop voice is steadier than kitchen voice.",
-    "PERIN": "26, Cass's brother. Dry, precise, carries something heavy. Letters-voice is more controlled than in-person voice.",
-    "LENNE": "14, female. Quick, confident, intellectually sharp. Composes while she talks — fingers moving, voice certain.",
-    "TORVALD": "63, retired dye merchant. Gravelly, warm, rambling. Outer-district speech — longer sentences, less careful, trade metaphors.",
-    "MARET": "60, female. Controlled, precise, still. No wasted words. When she finally shows emotion it's devastating.",
-    "DAV_SORN": "34, Court Singer. Formal, clipped, self-correcting. Starts sentences and abandons them. Qualifying everything.",
-    "PROCTOR_FEN": "Male, middle-aged, Academy teacher. Dry, archly amused, pedagogical.",
-    "FERREN": "40, acoustician. Clinical, measured, professional.",
-    "MIRA_FEN": "60s, female, Academy scholar. Quiet, precise, carrying thirty years of regret.",
-    "VELLA": "Lenne's mother, Court Singer. Measured, formal, the weight of knowing she's about to risk everything.",
-    "OSSIAN": "14, male student. Nervous, eager, tends to overstate.",
-}
 
 AUDIO_TAG_GUIDE = """
 Available ElevenLabs v3 audio tags (use sparingly, only when the emotion is CLEAR):
@@ -69,15 +43,10 @@ def call_claude(prompt, max_tokens=8000):
     import httpx
     resp = httpx.post(
         f"{API_BASE}/v1/messages",
-        headers={
-            "x-api-key": API_KEY,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "context-1m-2025-08-07",
-            "content-type": "application/json",
-        },
+        headers=build_api_headers(beta="context-1m-2025-08-07"),
         json={
             "model": WRITER_MODEL,
-            "max_tokens": max_tokens,
+            "max_tokens": apply_max_output_limit(max_tokens),
             "temperature": 0.1,
             "messages": [{"role": "user", "content": prompt}],
         },
@@ -85,6 +54,35 @@ def call_claude(prompt, max_tokens=8000):
     )
     resp.raise_for_status()
     return resp.json()["content"][0]["text"]
+
+
+def load_character_descriptions():
+    characters_path = BASE_DIR / "characters.md"
+    descriptions = {
+        "NARRATOR": "The narrative voice. Calm, precise, and readable aloud.",
+    }
+    if not characters_path.exists():
+        descriptions["MINOR"] = "Fallback voice for unnamed or unmapped characters."
+        return descriptions
+
+    current_name = None
+    current_lines = []
+    for raw_line in characters_path.read_text().splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            if current_name and current_lines:
+                descriptions[current_name] = " ".join(current_lines[:3])
+            current_name = line[3:].strip().upper()
+            current_lines = []
+            continue
+        if current_name and line.startswith("- "):
+            current_lines.append(line[2:].strip())
+
+    if current_name and current_lines:
+        descriptions[current_name] = " ".join(current_lines[:3])
+
+    descriptions["MINOR"] = "Fallback voice for unnamed or unmapped characters."
+    return descriptions
 
 
 def parse_chapter(ch_num):
@@ -101,7 +99,7 @@ def parse_chapter(ch_num):
     prompt = f"""You are parsing a novel chapter into an audiobook script. Your job is to break the text into segments, each attributed to a speaker, with optional audio delivery tags.
 
 CHARACTERS IN THIS NOVEL:
-{json.dumps(CHARACTERS, indent=2)}
+{json.dumps(load_character_descriptions(), indent=2)}
 
 AUDIO TAG GUIDE:
 {AUDIO_TAG_GUIDE}
@@ -115,7 +113,7 @@ RULES:
 6. Scene breaks (---) become {{"speaker": "NARRATOR", "text": "[pause]"}}
 7. Chapter titles become the first segment: {{"speaker": "NARRATOR", "text": "[slowly] Chapter One: The Morning Pitch"}}
 8. Add audio tags based on emotional context. Be subtle — most lines need no tag.
-9. Internal thoughts in *italics* should be read by the CHARACTER (Cass usually), tagged [softly] or [whisper].
+9. Internal thoughts in *italics* should be read by the relevant viewpoint character, tagged [softly] or [whisper] when appropriate.
 
 OUTPUT FORMAT: A JSON array of objects, each with:
   "speaker": character name (from the list above)

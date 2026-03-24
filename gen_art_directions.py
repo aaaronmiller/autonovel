@@ -6,29 +6,20 @@ Called by gen_art.py curate to produce genuinely different variants.
 import os
 import json
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env", override=True)
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+ANTHROPIC_BASE = get_api_base_url()
 
 
 def call_claude(prompt, max_tokens=3000):
     import httpx
     resp = httpx.post(
         f"{ANTHROPIC_BASE}/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
+        headers=build_api_headers(),
         json={
             "model": WRITER_MODEL,
-            "max_tokens": max_tokens,
+            "max_tokens": apply_max_output_limit(max_tokens),
             "temperature": 0.9,
             "messages": [{"role": "user", "content": prompt}],
         },
@@ -62,10 +53,10 @@ They should explore different:
 DO NOT just vary the same concept. Each should look like it came from a DIFFERENT designer.
 
 Examples of the range I want:
-  Direction 1: "Abstract — a single bronze bell cross-section rendered as a geological diagram, layers of metal shown like strata, the sound wave visible as concentric rings. Monochrome with one warm accent. Linocut style."
-  Direction 2: "Figurative — a boy's hands on a workbench, seen from above. Bronze filings, a pitch-gauge, a letter half-unfolded. Photorealistic, shallow depth of field. Warm lamplight."
-  Direction 3: "Typographic — the title constructed from overlapping sound waves, the letterforms vibrating. Pure geometry. Black on cream."
-  Direction 4: "Atmospheric — a limestone bowl city seen from the rim at dawn, tiny and detailed, the bell tower as the only vertical element. Watercolor. Pale gold and gray."
+  Direction 1: "Abstract — a single symbolic object rendered as a geological or diagrammatic form. Monochrome with one accent color."
+  Direction 2: "Figurative — close-up of a character's hands, tools, or desk, seen from above. Photorealistic, shallow depth of field."
+  Direction 3: "Typographic — the title treated as image, using geometry, texture, or symbolic repetition."
+  Direction 4: "Atmospheric — a place from the novel seen at a dramatic distance with a strong palette and weather signature."
 
 Output a JSON array of {n} objects, each with:
   "direction": one-word label (e.g. "abstract", "figurative", "atmospheric")

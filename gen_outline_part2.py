@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
 """Generate remaining chapters + foreshadowing ledger."""
-import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from project_config import BASE_DIR, WRITER_MODEL, project_title
 
-BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
-
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+API_BASE = get_api_base_url()
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+    headers = build_api_headers()
     payload = {
         "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
+        "max_tokens": apply_max_output_limit(max_tokens),
         "temperature": 0.5,
         "system": (
             "You are a novel architect continuing an outline. Write in the same format "
@@ -35,28 +25,19 @@ def call_writer(prompt, max_tokens=16000):
     resp.raise_for_status()
     return resp.json()["content"][0]["text"]
 
-part1 = open('/tmp/outline_output.md').read()
+outline_seed = Path("/tmp/outline_output.md")
+part1 = outline_seed.read_text() if outline_seed.exists() else (BASE_DIR / "outline.md").read_text()
 mystery = (BASE_DIR / "MYSTERY.md").read_text()
 
-prompt = f"""Here are the first 17 chapters of a 24-chapter outline for "The Second Son of the House of Bells."
-The outline was cut off mid-chapter-17. Continue from where it left off, then complete chapters 18-24,
-then write the Foreshadowing Ledger.
+prompt = f"""Here is a partial outline for "{project_title()}".
+The outline may be truncated. Continue from where it left off, complete the remaining
+chapters needed by the structure already implied here, then write the Foreshadowing Ledger.
 
 THE OUTLINE SO FAR:
 {part1}
 
 THE CENTRAL MYSTERY (for reference):
 {mystery}
-
-REMAINING STRUCTURE NEEDED:
-
-Ch 17 (complete it): Maret confrontation -- she reveals the truth about the void
-Ch 18: Dark Night of the Soul -- Cass processes what he's learned
-Ch 19: Break Into Three -- new information or perspective changes everything  
-Ch 20-21: Gathering forces, making a plan
-Ch 22: The climax at the Bell Tower -- Cass answers the question
-Ch 23: Aftermath and resolution
-Ch 24: Final Image (mirror of Opening Image)
 
 Then write:
 
@@ -69,12 +50,11 @@ Include at LEAST 15 threads. Types: object, dialogue, action, symbolic, structur
 Plant-to-payoff distance must be at least 3 chapters.
 
 REMEMBER:
-- The climax uses the fourth option: Cass amplifies the question into audible range
-  so the city can hear and answer for themselves
-- This doesn't free Perin directly (Stability Trap -- not everything resolves cleanly)
-- Cass's lie must be fully shattered by the climax
-- Final Image should mirror Ch 1's Opening Image but show transformation
-- At least one quiet chapter in the back half
+- Preserve and complete the structure already established in the existing outline
+- Not everything should resolve cleanly
+- The protagonist's key misconception should be fully tested by the climax
+- The final image should feel like a transformed echo of the opening
+- At least one quiet chapter should exist in the back half
 """
 
 print("Calling writer model...", file=sys.stderr)
