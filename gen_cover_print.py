@@ -16,10 +16,7 @@ import io
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from project_config import PROJECT_AUTHOR, PROJECT_SUBTITLE, project_title
-
-BASE_DIR = Path(__file__).parent
-ART_DIR = BASE_DIR / "art"
+from project_config import ART_DIR, PROJECT_AUTHOR, PROJECT_SUBTITLE, project_title
 
 # Standard trade paperback dimensions
 TRIM_W = 5.5   # inches

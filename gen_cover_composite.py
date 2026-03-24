@@ -13,9 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from project_config import PROJECT_AUTHOR, PROJECT_SUBTITLE, project_title
-
-BASE_DIR = Path(__file__).parent
+from project_config import ART_DIR, PROJECT_AUTHOR, PROJECT_SUBTITLE, project_title
 
 
 def find_font(name, style="Regular"):
@@ -171,7 +169,7 @@ def composite_cover(
 
     if not output_path:
         stem = Path(art_path).stem
-        output_path = BASE_DIR / "art" / f"{stem}_titled.png"
+        output_path = ART_DIR / f"{stem}_titled.png"
 
     result.save(str(output_path), "PNG")
     print(f"Saved: {output_path} ({Path(output_path).stat().st_size:,} bytes)")

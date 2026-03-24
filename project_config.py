@@ -17,6 +17,9 @@ EVAL_LOGS_DIR = BASE_DIR / "eval_logs"
 TYPES_DIR = BASE_DIR / "typeset"
 LANDING_DIR = BASE_DIR / "landing"
 AUDIO_DIR = BASE_DIR / "audiobook"
+ART_DIR = BASE_DIR / "art"
+
+VOICE_PATH = BASE_DIR / "voice.md"
 
 WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
 JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-opus-4-6")
