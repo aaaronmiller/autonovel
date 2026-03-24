@@ -12,6 +12,8 @@ For the full technical pipeline specification, see [PIPELINE.md](PIPELINE.md).
 # 1. Setup
 cd ~/autonovel
 cp .env.example .env   # Add your Anthropic API key
+uv sync
+uv run autonovel smoke-check
 
 # 2. Generate a seed concept (or write your own in seed.txt)
 uv run python seed.py

@@ -8,6 +8,7 @@ Use **WSL/bash** for all local commands.
 
 - `uv sync` installs project dependencies from `pyproject.toml` and `uv.lock`.
 - `cp .env.example .env` creates the local config file for API keys.
+- `uv run autonovel smoke-check` runs the lightweight compile and file-layout sanity check.
 - `scripts/launch-agent.sh claude --continue --model=opus` starts a supported coding CLI with the repo’s launcher wrapper.
 - `uv run python seed.py` generates or refreshes `seed.txt` content.
 - `uv run python run_pipeline.py --from-scratch` starts the full pipeline from a clean state.

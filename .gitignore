@@ -5,6 +5,9 @@ __pycache__/
 *.pyc
 .env
 .venv/
+*.egg-info/
+build/
+dist/
 typeset/*.pdf
 typeset/chapters_content.tex
 *.pdf

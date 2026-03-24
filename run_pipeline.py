@@ -177,15 +177,6 @@ def git_add_commit(message: str) -> str:
         return ""
 
 
-def git_reset_hard(ref: str = "HEAD~1"):
-    """Hard reset to discard bad changes."""
-    if not ENABLE_GIT:
-        step(f"GIT DISABLED: reset skipped for {ref}")
-        return
-    step(f"GIT RESET: {ref}")
-    run_tool(f"git reset --hard {ref}")
-
-
 def git_short_hash() -> str:
     """Get current HEAD short hash."""
     r = run_tool("git rev-parse --short HEAD")
@@ -237,14 +228,17 @@ def get_total_chapters(state: dict) -> int:
     """Determine total chapter count from state or outline."""
     if state.get("chapters_total", 0) > 0:
         return state["chapters_total"]
+    existing = count_chapter_files()
+    if existing > 0:
+        return existing
     # Try to infer from outline.md
     outline = BASE_DIR / "outline.md"
     if outline.exists():
         text = outline.read_text()
-        matches = re.findall(r'###\s*Ch(?:apter)?\s*(\d+)', text)
+        matches = re.findall(r'#+\s*Ch(?:apter)?\s*(\d+)', text, re.IGNORECASE)
         if matches:
             return max(int(m) for m in matches)
-    return 24  # sensible default
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +320,11 @@ def run_foundation(state: dict) -> dict:
 
     # Determine total chapters from outline
     total = get_total_chapters(state)
+    if total <= 0:
+        step("ERROR: unable to infer total chapters from outline.md or existing chapter files")
+        state["phase"] = "foundation"
+        save_state(state)
+        raise SystemExit(1)
     state["chapters_total"] = total
     state["phase"] = "drafting"
     state["current_focus"] = "chapter_drafting"
@@ -346,6 +345,9 @@ def run_drafting(state: dict) -> dict:
     banner("PHASE 2: DRAFTING", "=")
 
     total = get_total_chapters(state)
+    if total <= 0:
+        step("ERROR: no planned chapter count found. Run foundation first or set outline chapter headings.")
+        raise SystemExit(1)
     start_chapter = state.get("chapters_drafted", 0) + 1
 
     CHAPTERS_DIR.mkdir(exist_ok=True)

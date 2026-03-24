@@ -1,9 +1,19 @@
 [project]
 name = "autonovel"
 version = "0.1.0"
-description = "Add your description here"
+description = "Automation pipeline for drafting, revising, and exporting novels"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "python-dotenv>=1.2.2",
 ]
+
+[project.scripts]
+autonovel = "main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["main", "project_config"]

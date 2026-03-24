@@ -19,6 +19,9 @@ cp .env.example .env    # Add your API keys
 # Install dependencies
 uv sync
 
+# Run a quick repository smoke check
+uv run autonovel smoke-check
+
 # Generate a seed concept (or write your own in seed.txt)
 uv run python seed.py
 
@@ -115,6 +118,7 @@ See [PIPELINE.md](PIPELINE.md) for the full technical specification.
 | `run_pipeline.py` | Full pipeline orchestrator (seed → finished novel) |
 | `build_arc_summary.py` | Regenerate arc summary from chapters |
 | `build_outline.py` | Regenerate outline from chapters |
+| `main.py` | Small CLI for `status` and `smoke-check` |
 
 ---
 
@@ -247,6 +251,15 @@ Issue coverage in this cleanup:
 - Shared config introduced for metadata, paths, models, and optional git behavior.
 - Pipeline fallback logic now restores file snapshots instead of relying on destructive git resets.
 - `reader_panel.py` generalized with dynamic manuscript stats from the current chapters.
+
+## Verification
+
+Use the helper CLI for quick sanity checks before or after larger refactors:
+
+```bash
+uv run autonovel smoke-check
+uv run autonovel status
+```
 
 ---
 
