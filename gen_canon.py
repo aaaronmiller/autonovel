@@ -3,10 +3,11 @@
 Generate canon.md by extracting all hard facts from world.md + characters.md.
 """
 import sys
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, WRITER_MODEL
 
 API_BASE = get_api_base_url()
+OUTPUT_PATH = BASE_DIR / "canon.md"
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
@@ -25,7 +26,7 @@ def call_writer(prompt, max_tokens=16000):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 world = (BASE_DIR / "world.md").read_text()
 characters = (BASE_DIR / "characters.md").read_text()
@@ -82,4 +83,5 @@ RULES:
 
 print("Calling writer model...", file=sys.stderr)
 result = call_writer(prompt)
+OUTPUT_PATH.write_text(result, encoding="utf-8")
 print(result)

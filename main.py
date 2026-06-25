@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from project_config import BASE_DIR, PROJECT_AUTHOR, PROJECT_TITLE, chapter_files, project_title
+from project_config import BASE_DIR, PROJECT_AUTHOR, chapter_files, project_title
 
 STATE_FILE = BASE_DIR / "state.json"
 CORE_PATHS = [
@@ -63,7 +63,7 @@ def cmd_smoke_check(_args: argparse.Namespace) -> int:
 
     chapters = chapter_files()
     print("Smoke check passed.")
-    print(f"  Project:  {PROJECT_TITLE}")
+    print(f"  Project:  {project_title()}")
     print(f"  Author:   {PROJECT_AUTHOR}")
     print(f"  Chapters: {len(chapters)}")
     print(f"  Root:     {BASE_DIR}")

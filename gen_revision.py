@@ -4,7 +4,7 @@ Revision chapter generator. Rewrites a chapter from a specific revision brief.
 Usage: python gen_revision.py <chapter_num> <brief_file>
 """
 import sys
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, WRITER_MODEL, project_title
 
 API_BASE = get_api_base_url()
@@ -26,7 +26,7 @@ def call_writer(prompt, max_tokens=16000):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=600)
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 def main():
     ch_num = int(sys.argv[1])

@@ -21,6 +21,7 @@ from datetime import datetime
 from api_config import (
     apply_max_output_limit,
     build_api_headers,
+    extract_message_text,
     get_api_base_url,
     has_api_credentials,
 )
@@ -51,7 +52,7 @@ def call_opus(prompt, max_tokens=8000):
         headers=headers, json=payload, timeout=600,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 
 def get_title():

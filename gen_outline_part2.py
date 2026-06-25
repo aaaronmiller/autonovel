@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Generate remaining chapters + foreshadowing ledger."""
 import sys
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from pathlib import Path
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, WRITER_MODEL, project_title
 
 API_BASE = get_api_base_url()
+OUTPUT_PATH = BASE_DIR / "outline.md"
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
@@ -23,7 +25,7 @@ def call_writer(prompt, max_tokens=16000):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=600)
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 outline_seed = Path("/tmp/outline_output.md")
 part1 = outline_seed.read_text() if outline_seed.exists() else (BASE_DIR / "outline.md").read_text()
@@ -59,4 +61,6 @@ REMEMBER:
 
 print("Calling writer model...", file=sys.stderr)
 result = call_writer(prompt)
-print(result)
+combined = part1.rstrip() + "\n\n" + result.strip() + "\n"
+OUTPUT_PATH.write_text(combined, encoding="utf-8")
+print(combined)

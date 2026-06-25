@@ -6,7 +6,7 @@ Called by gen_art.py curate to produce genuinely different variants.
 import os
 import json
 import re
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, WRITER_MODEL
 
 ANTHROPIC_BASE = get_api_base_url()
@@ -26,7 +26,7 @@ def call_claude(prompt, max_tokens=3000):
         timeout=120,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 
 def generate_directions(art_type, style, n=6, world_excerpt=""):

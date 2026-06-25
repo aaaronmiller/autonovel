@@ -237,6 +237,36 @@ Built-in targets: `claude`, `codex`, `opencode`, `qwen`, `gemini`, and
 OpenCode, plus a `CUSTOM_AGENT_BIN` escape hatch for user-defined tools
 or editor wrappers.
 
+For repeatable OpenRouter pipeline runs in **WSL/bash**, prefer the
+generic model runner:
+
+```bash
+AUTONOVEL_MODEL_ID=stepfun/step-3.5-flash:free scripts/run-openrouter-model.sh gen_world.py
+AUTONOVEL_MODEL_ID=stepfun/step-3.5-flash:free scripts/run-openrouter-model.sh evaluate.py --phase=foundation
+AUTONOVEL_MODEL_ID=stepfun/step-3.5-flash:free scripts/run-openrouter-minimax-foundation.sh 300 /tmp/foundation.log
+```
+
+`scripts/run-openrouter-minimax.sh` remains as a compatibility wrapper
+with a Minimax default model; use `scripts/run-openrouter-model.sh` for
+new OpenRouter runs.
+
+For a safer mixed-model setup, use the hybrid runner so drafting stays
+cheap while evaluation and review stay on low-cost OpenRouter models:
+
+```bash
+scripts/run-openrouter-hybrid.sh gen_world.py
+scripts/run-openrouter-hybrid.sh evaluate.py --phase=foundation
+scripts/run-openrouter-hybrid.sh review.py
+```
+
+Defaults:
+- writer: `stepfun/step-3.5-flash:free`
+- judge: `z-ai/glm-5`
+- review: `arcee-ai/trinity-large-preview:free`
+
+Override any role by exporting `AUTONOVEL_WRITER_MODEL`,
+`AUTONOVEL_JUDGE_MODEL`, or `AUTONOVEL_REVIEW_MODEL` first.
+
 ## Neutral State
 
 `master` is intended to stay neutral. Story-specific planning docs,

@@ -10,7 +10,7 @@ import sys
 import json
 import re
 from datetime import datetime
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, CHAPTERS_DIR, JUDGE_MODEL
 
 API_BASE = get_api_base_url()
@@ -142,7 +142,7 @@ def call_reader(reader_key, arc_summary):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
     resp.raise_for_status()
-    raw = resp.json()["content"][0]["text"]
+    raw = extract_message_text(resp.json())
     
     # Parse JSON
     raw = raw.strip()

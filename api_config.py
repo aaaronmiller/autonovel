@@ -110,6 +110,23 @@ def build_api_headers(*, beta: str | None = None) -> dict[str, str]:
     return headers
 
 
+def extract_message_text(payload: dict) -> str:
+    """Return concatenated text blocks from an Anthropic-compatible response."""
+    content = payload.get("content", [])
+    text_parts: list[str] = []
+    for block in content:
+        if block.get("type") == "text" and "text" in block:
+            text_parts.append(block["text"])
+    if text_parts:
+        return "\n".join(part for part in text_parts if part)
+
+    for block in content:
+        if "text" in block:
+            return block["text"]
+
+    raise KeyError("No text block found in response content")
+
+
 def apply_max_output_limit(max_tokens: int) -> int:
     """Optionally cap request output tokens from env."""
     cap = _first_nonempty(

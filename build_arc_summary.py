@@ -5,7 +5,7 @@ For each chapter: first 150 words, last 150 words, plus any dialogue.
 Gives the reader panel enough to evaluate the ARC without 72k tokens.
 """
 import re
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, CHAPTERS_DIR, WRITER_MODEL, chapter_files, project_title
 
 API_BASE = get_api_base_url()
@@ -22,7 +22,7 @@ def call_writer(prompt, max_tokens=4000):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=120)
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 def extract_key_passages(text):
     """Get opening, closing, and best dialogue from a chapter."""

@@ -7,7 +7,7 @@ and assembles into an outline that reflects the novel as-written.
 import sys
 import json
 import re
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, CHAPTERS_DIR, JUDGE_MODEL, chapter_files, project_title
 
 API_BASE = get_api_base_url()
@@ -28,7 +28,7 @@ def call_model(prompt, max_tokens=1500):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=120)
     resp.raise_for_status()
-    text = resp.json()["content"][0]["text"]
+    text = extract_message_text(resp.json())
     # Extract JSON from response
     text = text.strip()
     if text.startswith("```"):

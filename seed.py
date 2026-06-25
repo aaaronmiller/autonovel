@@ -14,6 +14,7 @@ import sys
 from api_config import (
     apply_max_output_limit,
     build_api_headers,
+    extract_message_text,
     get_api_base_url,
     has_api_credentials,
 )
@@ -46,7 +47,7 @@ def call_writer(prompt, max_tokens=4000):
         timeout=120,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 
 GENERATE_PROMPT = """Generate {count} fantasy novel seed concepts. Each should be

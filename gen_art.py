@@ -29,7 +29,7 @@ import time
 import shutil
 import argparse
 import subprocess
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, FAL_KEY, WRITER_MODEL, project_title
 
 FAL_URL = "https://fal.run/fal-ai/nano-banana-2"
@@ -120,7 +120,7 @@ def call_claude(prompt, max_tokens=1500):
         timeout=120,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 
 def load_style():

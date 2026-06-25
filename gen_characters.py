@@ -4,10 +4,11 @@ One-shot characters.md generator for foundation phase.
 Reads seed.txt + voice.md + world.md + CRAFT.md, calls writer model.
 """
 import sys
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, WRITER_MODEL
 
 API_BASE = get_api_base_url()
+OUTPUT_PATH = BASE_DIR / "characters.md"
 
 def call_writer(prompt, max_tokens=16000):
     import httpx
@@ -27,7 +28,7 @@ def call_writer(prompt, max_tokens=16000):
     }
     resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 seed = (BASE_DIR / "seed.txt").read_text()
 world = (BASE_DIR / "world.md").read_text()
@@ -124,4 +125,5 @@ IMPORTANT:
 
 print("Calling writer model...", file=sys.stderr)
 result = call_writer(prompt)
+OUTPUT_PATH.write_text(result, encoding="utf-8")
 print(result)

@@ -15,7 +15,7 @@ Usage:
 import sys
 import json
 import re
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import AUDIO_DIR, BASE_DIR, CHAPTERS_DIR, WRITER_MODEL
 
 API_BASE = get_api_base_url()
@@ -53,7 +53,7 @@ def call_claude(prompt, max_tokens=8000):
         timeout=300,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return extract_message_text(resp.json())
 
 
 def load_character_descriptions():

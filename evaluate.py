@@ -15,12 +15,10 @@ to tune what "good" means. The agent treats it as a black box.
 
 import argparse
 import json
-import os
-import sys
 import re
 from datetime import datetime
 from pathlib import Path
-from api_config import apply_max_output_limit, build_api_headers, get_api_base_url
+from api_config import apply_max_output_limit, build_api_headers, extract_message_text, get_api_base_url
 from project_config import BASE_DIR, CHAPTERS_DIR, EVAL_LOGS_DIR, JUDGE_MODEL
 API_BASE_URL = get_api_base_url()
 
@@ -286,7 +284,78 @@ def call_judge(prompt, max_tokens=2000):
         timeout=180,
     )
     resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    response_payload = resp.json()
+    try:
+        return extract_message_text(response_payload)
+    except KeyError:
+        if "openrouter.ai" not in API_BASE_URL:
+            raise
+        return call_judge_via_openrouter_chat(prompt, max_tokens=max_tokens)
+
+
+def call_judge_via_openrouter_chat(prompt, max_tokens=2000):
+    """Fallback for reasoning-heavy OpenRouter models that never emit a text block on /messages."""
+    import httpx
+
+    headers = build_api_headers()
+    headers.pop("anthropic-version", None)
+    headers.pop("anthropic-beta", None)
+    completion_budget = max(2000, apply_max_output_limit(max_tokens))
+    payload = {
+        "model": JUDGE_MODEL,
+        "max_tokens": completion_budget,
+        "temperature": 0.3,
+        "reasoning": {"effort": "low"},
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a literary critic and novel editor. "
+                           "You evaluate fiction with precision. Always respond with valid JSON. "
+                           "No markdown fences, no preamble -- just the JSON object.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+    }
+    resp = httpx.post(
+        f"{API_BASE_URL}/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=180,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    message = payload["choices"][0]["message"]
+    if message.get("content"):
+        return message["content"]
+    return message.get("reasoning", "")
+
+
+def call_judge_json(prompt, required_keys, *, max_tokens=2000, retries=2):
+    """Call the judge and coerce the result into a tiny JSON contract."""
+    last_error = None
+    raw = ""
+    current_prompt = prompt
+
+    for _ in range(retries + 1):
+        raw = call_judge(current_prompt, max_tokens=max_tokens)
+        try:
+            parsed = parse_json_response(raw)
+            missing = [key for key in required_keys if key not in parsed]
+            if missing:
+                raise KeyError(f"Missing keys: {', '.join(missing)}")
+            return parsed
+        except (ValueError, json.JSONDecodeError, KeyError) as exc:
+            last_error = exc
+            raw_snippet = raw[:3000]
+            current_prompt = (
+                "Repair the previous response into one valid JSON object with exactly "
+                f"these keys: {', '.join(required_keys)}.\n"
+                "Do not add markdown, commentary, or extra keys.\n"
+                "If a value is unknown, use an empty string or empty list.\n\n"
+                f"Previous response:\n{raw_snippet}"
+            )
+
+    raise ValueError(f"Judge JSON parse failed after retries: {last_error}; raw={raw[:500]!r}")
 
 
 def parse_json_response(text):
@@ -333,29 +402,21 @@ def parse_json_response(text):
 
 # --- Foundation Evaluation ---
 
-FOUNDATION_PROMPT = """Evaluate these fantasy novel planning documents.
+FOUNDATION_SHARED_PROMPT = """Evaluate these fantasy novel planning documents.
 
-SCORING CALIBRATION (read this before scoring anything):
+SCORING CALIBRATION:
+- 9-10: Published-novel planning quality. Reserve 9+ for work that feels unusually complete.
+- 7-8: Strong. A skilled author could draft from this with only minor invention.
+- 5-6: Functional but thin. Important material would still need invention during drafting.
+- 3-4: Sketchy. Major unanswered questions block drafting.
+- 1-2: Placeholder.
+- 0: Missing or unusable.
 
-  9-10: Could not improve this with a month of focused editorial work.
-        Published-novel quality. You can name the specific published
-        novel it competes with. Reserve 10 for work that SURPRISES you.
-  7-8:  Strong. A skilled author could draft from this document with
-        minimal invention. Gaps exist but are minor and enumerable.
-  5-6:  Functional but thin. A writer would need to invent significant
-        material on the fly. Major gaps or generic choices.
-  3-4:  Sketchy. More questions than answers. Would require heavy
-        supplementation before drafting.
-  1-2:  Placeholder or stub. Not usable for drafting.
-  0:    Empty or missing.
-
-  A score of 8+ requires ZERO major gaps. A score of 9+ requires
-  that you genuinely struggled to find flaws. Err toward lower scores.
-
-MANDATORY: For EVERY dimension, before scoring, you must identify:
-  (a) The single biggest GAP or WEAKNESS in that area
-  (b) A specific, actionable improvement that would raise the score
-  If you cannot find a gap, explain why you believe one doesn't exist.
+Rules:
+- Be hard to impress.
+- Treat convenient vagueness as a defect.
+- If the docs would force the writer to invent scene-critical facts, score 6 max.
+- Return only the requested JSON object.
 
 VOICE DEFINITION:
 {voice}
@@ -369,142 +430,296 @@ CHARACTER REGISTRY:
 OUTLINE:
 {outline}
 
-CANON (established facts):
+CANON:
 {canon}
-
-CROSS-CHECKS (perform these before scoring):
-1. Check all example dialogue lines against ANTI-SLOP patterns:
-   - Look for structural formulas repeated across characters
-     ("not X, but Y" / "either X, or Y" / "there's a difference")
-   - Check for AI rhetorical tics disguised as character voice
-   - Deduct from character_distinctiveness if multiple characters
-     share the same sentence structures
-2. Check for missing NEGATIVE SPACE -- what's absent?
-   - Are there gaps in the governing system that would block a specific
-     plot scene? (e.g., a key ability works one way in one scene and
-     another way in a later one? What resolves the climax?)
-   - Are there characters needed for the plot who don't exist?
-   - Are there scenes the outline demands that the world can't support?
-3. Check for CONVENIENT GAPS vs DELIBERATE MYSTERY:
-   - Convenient: "the details are unclear" where specifics are needed
-   - Deliberate: withholding information from the READER while the
-     AUTHOR knows the answer. If the planning docs dodge a question
-     that a writer would need answered to draft a scene, that's a gap,
-     not an iceberg.
-4. Check the canon for INTERNAL CONTRADICTIONS:
-   - Cross-reference dates, ages, and timelines
-   - Check if character abilities match magic system rules
-   - Look for factual conflicts between documents
-
-Score these dimensions (gap + improvement required for each):
-
-LORE & WORLDBUILDING:
-- magic_system: Hard rules with COSTS and LIMITATIONS per Sanderson's
-  Second Law. Could a writer resolve the CLIMACTIC CONFLICT using only
-  rules already established? Are costs plot-driving, not decorative?
-  Are there at least 3 societal implications explored with specificity?
-  Is the system TESTABLE -- could you write a courtroom scene, a
-  contract negotiation, and a magical confrontation without inventing
-  new rules?
-- world_history: Timeline of events creating PRESENT-DAY tensions.
-  Each historical event should map to a current faction conflict or
-  character motivation. Decorative history (cool but plot-irrelevant)
-  counts against the score, not for it.
-- geography_and_culture: Locations distinct with sensory signatures.
-  Cultures with specific customs that GENERATE CONFLICT. Economy that
-  creates class tension. Check: could two different scenes set in two
-  different locations feel meaningfully different based on what's here?
-- lore_interconnection: Does changing one element force changes in
-  at least two others? Test by mentally removing the magic system --
-  does the political structure collapse? Does the class system change?
-  If elements are modular/detachable, score low.
-- iceberg_depth: Implied depth vs stated depth. But CHECK: does the
-  author actually know the answers to the mysteries, or are they
-  handwaving? If a planning doc says "the answer will be revealed"
-  without specifying WHAT the answer is, that's a gap wearing an
-  iceberg costume.
-
-CHARACTER:
-- character_depth: Wound/want/need/lie chains that are CAUSALLY LINKED
-  (not just thematically associated). The lie must logically follow
-  from the wound. The want must be the wrong solution to the lie.
-  The need must directly oppose the want. Check each chain for
-  logical gaps. Also check: are ANY characters missing wound/want/need
-  chains who probably need them?
-- character_distinctiveness: Remove all dialogue tags from the example
-  lines. Can you identify the speaker from sentence structure alone?
-  Check for REPEATED STRUCTURAL FORMULAS across characters (e.g.,
-  multiple characters using "X. Not Y." or balanced antithesis).
-  Check that metaphor domains don't overlap. Check that speech
-  patterns reflect character background (a 14-year-old should not
-  sound like a 60-year-old merchant).
-- character_secrets: Each major character's secret should be something
-  that, if revealed, changes the plot's trajectory. Vague secrets
-  ("he knows more than he says") score lower than specific ones
-  ("he knows the harmonic means X, which would invalidate Y").
-
-STRUCTURE:
-- outline_completeness: Chapters with beats, POV, emotional arc,
-  try-fail cycle type. Save the Cat beats at correct % marks.
-  Score 0 if empty. Score 5+ only if act structure exists.
-- foreshadowing_balance: Every planted thread has a planned payoff.
-  Score 0 if ledger is empty regardless of implicit threads in
-  other documents -- foreshadowing must be TRACKED to count.
-
-CRAFT:
-- internal_consistency: Actively hunt for contradictions. Cross-ref
-  dates, ages, character counts, named locations. Flag any case
-  where documents disagree. A single major contradiction caps this
-  at 6. Three or more caps at 4.
-- voice_clarity: Voice definition must be specific and ACTIONABLE.
-  Exemplar passages must demonstrate the voice. Anti-exemplars must
-  define boundaries. Check exemplar dialogue for AI slop patterns.
-  A voice doc that is beautiful but contains slop in its own examples
-  is undermined -- deduct.
-- canon_coverage: Facts logged, sourced, and sufficient to catch
-  contradictions. Check: if a writer introduced a NEW fact in
-  chapter 5, could they verify it against the canon? Is the canon
-  granular enough? Are there known facts from other docs that
-  AREN'T in the canon?
-
-Respond with JSON:
-{{
-  "magic_system": {{"score": N, "gap": "biggest weakness", "fix": "specific improvement", "note": "..."}},
-  "world_history": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "geography_and_culture": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "lore_interconnection": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "iceberg_depth": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "character_depth": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "character_distinctiveness": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "character_secrets": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "outline_completeness": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "foreshadowing_balance": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "internal_consistency": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "voice_clarity": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "canon_coverage": {{"score": N, "gap": "...", "fix": "...", "note": "..."}},
-  "slop_in_planning_docs": {{"found": ["list any AI slop patterns found in exemplar dialogue, voice examples, or character descriptions"], "note": "..."}},
-  "contradictions_found": ["list any factual contradictions between documents"],
-  "overall_score": N,
-  "lore_score": N,
-  "weakest_dimension": "...",
-  "top_3_improvements": ["ranked list of the 3 highest-leverage improvements"]
-}}
-
-WEIGHTING: lore/worldbuilding 40%, character 30%, structure 20%, craft 10%.
-A novel with thin worldbuilding but a complete outline is WORSE than deep
-worldbuilding with an incomplete outline.
-
-FINAL CHECK: If your overall_score is above 7, re-read your gap lists.
-If any gap describes a problem that would force a writer to stop and
-invent something during drafting, your score is too high. Revise down.
 """
+
+FOUNDATION_DIMENSIONS = [
+    {
+        "name": "magic_system",
+        "group": "lore",
+        "task": "Score the hard-rule clarity, costs, limits, and testability of the magic/system layer. Could a writer stage a contract negotiation, confrontation, and climax without inventing new rules?",
+    },
+    {
+        "name": "world_history",
+        "group": "lore",
+        "task": "Score the timeline depth and present-day causal pressure. Historical events should clearly drive current tensions, factions, or character motives.",
+    },
+    {
+        "name": "geography_and_culture",
+        "group": "lore",
+        "task": "Score location distinctiveness, cultural specificity, and whether setting details generate conflict instead of decorative wallpaper.",
+    },
+    {
+        "name": "lore_interconnection",
+        "group": "lore",
+        "task": "Score how tightly the world elements depend on each other. If one major system changed, would politics, economy, and plot pressure also change?",
+    },
+    {
+        "name": "iceberg_depth",
+        "group": "lore",
+        "task": "Score whether mysteries feel author-known and intentional rather than vague placeholders. Mystery without underlying answers should score low.",
+    },
+    {
+        "name": "character_depth",
+        "group": "character",
+        "task": "Score wound/want/need/lie chains for causal logic and completeness across the cast.",
+    },
+    {
+        "name": "character_distinctiveness",
+        "group": "character",
+        "task": "Score how distinct the major characters sound and feel. Penalize repeated rhetorical formulas and overlapping metaphor domains.",
+    },
+    {
+        "name": "character_secrets",
+        "group": "character",
+        "task": "Score whether major secrets are specific and plot-active rather than vague hints.",
+    },
+    {
+        "name": "outline_completeness",
+        "group": "structure",
+        "task": "Score whether the outline is draftable chapter by chapter, with beats, POV, emotional movement, and act structure.",
+    },
+    {
+        "name": "foreshadowing_balance",
+        "group": "structure",
+        "task": "Score whether planted threads are tracked with intended payoffs. Hidden threads in other docs do not count unless they are actually tracked.",
+    },
+    {
+        "name": "internal_consistency",
+        "group": "craft",
+        "task": "Score factual consistency across all planning docs. Cross-check names, dates, ages, abilities, locations, and timeline assumptions.",
+    },
+    {
+        "name": "voice_clarity",
+        "group": "craft",
+        "task": "Score whether the voice document is actionable, bounded, and free of generic AI-style rhetorical habits in its own examples.",
+    },
+    {
+        "name": "canon_coverage",
+        "group": "craft",
+        "task": "Score whether the canon is granular enough to catch future contradictions and record important hard facts from other docs.",
+    },
+]
+
+FOUNDATION_GROUP_WEIGHTS = {
+    "lore": 0.40,
+    "character": 0.30,
+    "structure": 0.20,
+    "craft": 0.10,
+}
+
+
+def foundation_bundle(layers):
+    return FOUNDATION_SHARED_PROMPT.format(**layers)
+
+
+def excerpt(text, limit):
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "\n...[truncated]"
+
+
+def foundation_context_for_dimension(layers, dimension_name):
+    """Keep each eval focused so reasoning-heavy models don't burn all tokens on setup."""
+    if dimension_name in {"magic_system"}:
+        return {
+            "world": excerpt(layers["world"], 3500),
+            "characters": excerpt(layers["characters"], 800),
+            "outline": excerpt(layers["outline"], 1800),
+            "canon": excerpt(layers["canon"], 2200),
+            "voice": "",
+        }
+    if dimension_name in {"world_history", "geography_and_culture", "lore_interconnection", "iceberg_depth"}:
+        return {
+            "world": excerpt(layers["world"], 3800),
+            "characters": excerpt(layers["characters"], 900),
+            "outline": excerpt(layers["outline"], 1600),
+            "canon": excerpt(layers["canon"], 1800),
+            "voice": "",
+        }
+    if dimension_name in {"character_depth", "character_distinctiveness", "character_secrets"}:
+        return {
+            "world": excerpt(layers["world"], 1200),
+            "characters": excerpt(layers["characters"], 3800),
+            "outline": excerpt(layers["outline"], 1800),
+            "canon": excerpt(layers["canon"], 1600),
+            "voice": excerpt(layers["voice"], 1200),
+        }
+    if dimension_name in {"outline_completeness", "foreshadowing_balance"}:
+        return {
+            "world": excerpt(layers["world"], 1200),
+            "characters": excerpt(layers["characters"], 1200),
+            "outline": excerpt(layers["outline"], 4500),
+            "canon": excerpt(layers["canon"], 1200),
+            "voice": "",
+        }
+    if dimension_name in {"internal_consistency", "canon_coverage"}:
+        return {
+            "world": excerpt(layers["world"], 2200),
+            "characters": excerpt(layers["characters"], 2200),
+            "outline": excerpt(layers["outline"], 2200),
+            "canon": excerpt(layers["canon"], 2200),
+            "voice": excerpt(layers["voice"], 800),
+        }
+    if dimension_name == "voice_clarity":
+        return {
+            "world": "",
+            "characters": excerpt(layers["characters"], 1200),
+            "outline": excerpt(layers["outline"], 1000),
+            "canon": "",
+            "voice": excerpt(layers["voice"], 3500),
+        }
+    return {
+        "world": excerpt(layers["world"], 2000),
+        "characters": excerpt(layers["characters"], 2000),
+        "outline": excerpt(layers["outline"], 2000),
+        "canon": excerpt(layers["canon"], 2000),
+        "voice": excerpt(layers["voice"], 1000),
+    }
+
+
+def foundation_dimension_prompt(layers, dimension):
+    scoped_layers = foundation_context_for_dimension(layers, dimension["name"])
+    return (
+        foundation_bundle(scoped_layers)
+        + "\n\n"
+        + f"DIMENSION: {dimension['name']}\n"
+        + f"TASK: {dimension['task']}\n\n"
+        + "Return one minified JSON object with exactly these keys:\n"
+        + '{"dimension":"'
+        + dimension["name"]
+        + '","score":0,"gap":"","fix":"","note":""}\n'
+        + "Use a numeric score from 0 to 10. `gap` must name the single biggest weakness. "
+        + "`fix` must be specific and actionable."
+    )
+
+
+def foundation_consistency_prompt(layers):
+    scoped_layers = {
+        "voice": excerpt(layers["voice"], 800),
+        "world": excerpt(layers["world"], 2200),
+        "characters": excerpt(layers["characters"], 2200),
+        "outline": excerpt(layers["outline"], 2200),
+        "canon": excerpt(layers["canon"], 2200),
+    }
+    return (
+        foundation_bundle(scoped_layers)
+        + "\n\n"
+        + "Find factual contradictions or near-contradictions across the planning docs.\n"
+        + "Return one minified JSON object with exactly these keys:\n"
+        + '{"contradictions":[],"note":""}\n'
+        + "List only real conflicts or high-risk mismatches. If none, return an empty list."
+    )
+
+
+def _coerce_score(value):
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(10.0, round(score, 2)))
+
+
+def scan_planning_doc_slop(layers):
+    """Run local heuristics over planning docs instead of asking the model for one more schema."""
+    found = []
+    docs_to_scan = [
+        ("voice", layers["voice"]),
+        ("characters", layers["characters"]),
+        ("world", layers["world"]),
+    ]
+    for label, text in docs_to_scan:
+        report = slop_score(text)
+        for word, count in report["tier1_hits"][:3]:
+            found.append(f"{label}: banned word '{word}' x{count}")
+        for pattern, count in report["structural_ai_tics"][:3]:
+            found.append(f"{label}: structural tic /{pattern}/ x{count}")
+        for pattern, count in report["fiction_ai_tells"][:3]:
+            found.append(f"{label}: fiction tell /{pattern}/ x{count}")
+    note = "No obvious local slop patterns found." if not found else "Local heuristic scan found potential AI-style patterns."
+    return {"found": found[:8], "note": note}
+
+
+def aggregate_foundation_dimensions(dimension_results):
+    grouped_scores = {}
+    for item in dimension_results:
+        grouped_scores.setdefault(item["group"], []).append(item["score"])
+
+    group_averages = {
+        group: round(sum(scores) / len(scores), 2)
+        for group, scores in grouped_scores.items()
+        if scores
+    }
+
+    overall = 0.0
+    for group, weight in FOUNDATION_GROUP_WEIGHTS.items():
+        overall += group_averages.get(group, 0.0) * weight
+
+    weakest = min(dimension_results, key=lambda item: item["score"])
+    top_3 = [
+        item["fix"]
+        for item in sorted(dimension_results, key=lambda item: item["score"])[:3]
+        if item["fix"]
+    ]
+
+    return {
+        "overall_score": round(overall, 2),
+        "lore_score": group_averages.get("lore", 0.0),
+        "weakest_dimension": weakest["name"],
+        "top_3_improvements": top_3,
+        "group_scores": group_averages,
+    }
 
 
 def evaluate_foundation():
     layers = load_layer_files()
-    prompt = FOUNDATION_PROMPT.format(**layers)
-    raw = call_judge(prompt, max_tokens=16000)
-    return parse_json_response(raw)
+    dimension_results = []
+
+    for dimension in FOUNDATION_DIMENSIONS:
+        parsed = call_judge_json(
+            foundation_dimension_prompt(layers, dimension),
+            required_keys=["dimension", "score", "gap", "fix", "note"],
+            max_tokens=700,
+            retries=2,
+        )
+        dimension_results.append({
+            "name": dimension["name"],
+            "group": dimension["group"],
+            "score": _coerce_score(parsed.get("score")),
+            "gap": str(parsed.get("gap", "")).strip(),
+            "fix": str(parsed.get("fix", "")).strip(),
+            "note": str(parsed.get("note", "")).strip(),
+        })
+
+    contradictions = call_judge_json(
+        foundation_consistency_prompt(layers),
+        required_keys=["contradictions", "note"],
+        max_tokens=700,
+        retries=2,
+    )
+
+    aggregate = aggregate_foundation_dimensions(dimension_results)
+    result = {
+        item["name"]: {
+            "score": item["score"],
+            "gap": item["gap"],
+            "fix": item["fix"],
+            "note": item["note"],
+        }
+        for item in dimension_results
+    }
+    result["slop_in_planning_docs"] = scan_planning_doc_slop(layers)
+    result["contradictions_found"] = contradictions.get("contradictions", [])
+    result["consistency_note"] = str(contradictions.get("note", "")).strip()
+    result["overall_score"] = aggregate["overall_score"]
+    result["lore_score"] = aggregate["lore_score"]
+    result["weakest_dimension"] = aggregate["weakest_dimension"]
+    result["top_3_improvements"] = aggregate["top_3_improvements"]
+    result["group_scores"] = aggregate["group_scores"]
+    result["evaluation_mode"] = "atomic_foundation_v1"
+    return result
 
 
 # --- Chapter Evaluation ---
